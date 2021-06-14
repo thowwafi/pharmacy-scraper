@@ -1,37 +1,57 @@
-import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-import webbrowser
+from selenium import webdriver
+import json
+import ast
 
 
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:65.0) Gecko/20100101 Firefox/65.0"
-MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; Android 7.0; SM-G930V Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.125 Mobile Safari/537.36"
+def get_subpages(driver, homepage_link):
+    driver.get(homepage_link)
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    links = []
+    for link in soup.find_all('a', href=True):
+        if 'https' not in link.get('href'):
+            a_href = homepage_link + link.get('href')
+        else:
+            a_href = link.get('href')
+        links.append(a_href)
+    return links
 
 
-def google_search(name):
+def google_search(name, street, zip_code, city):
     query = name.replace(' ', '+')
-    URL = f"https://google.com/search?q={query}"
-    headers = {"user-agent": USER_AGENT}
+    URL = f"https://google.com/search?q={query}+{street}+{zip_code}+{city}"
 
-    resp = requests.get(URL, headers=headers)
-    if resp.status_code == 200:
-        print(name)
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        linkElements = soup.select('.r a')
-        # print(linkElements)
-        linkToOpen = min(2, len(linkElements))
-        for i in range(linkToOpen):
-            print(linkElements[i].get('href'))
-            webbrowser.open(linkElements[i].get('href'))
-
+    driver = webdriver.Chrome(executable_path="./chromedriver")
+    driver.get(URL)
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    homepages = []
+    for link in soup.findAll("h3")[:2]:
+        homepage_link = link.find_parent('a').get('href')
+        links = get_subpages(driver, homepage_link)
+        data = {
+            "homepage": homepage_link,
+            "subpages": links
+        }
+        homepages.append(data)
+    driver.quit()
+    return homepages
 
 
 def run_scraper():
     df = pd.read_csv("./data/client_list.csv", sep=";", encoding='cp1252')
+    all_data = []
     for index, row in df.iterrows():
         if index < 5:
-            google_search(row['name'])
+            links = google_search(row['name'], row['street'], row['zip'], row['city'])
+            str_row = row.to_json()
+            row_json = ast.literal_eval(str_row)
+            row_json['sugestions'] = links
+            row_json['_id'] = index
+            all_data.append(row_json)
+    
+    with open("all_data.json", 'w', encoding='utf-8') as fn:
+        json.dump(all_data, fn, indent=4, ensure_ascii=False)
 
 
 if __name__ == '__main__':
