@@ -106,7 +106,7 @@ def get_validated_urls(web_button_link, suggestions):
     return validated_urls
 
 
-def check_validated_urls(file_path):
+def check_suggestion_exists(file_path):
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as fn:
             data = json.load(fn)
@@ -136,89 +136,87 @@ def get_subpages(url):
     return links
 
 
+def run_scraper(row, continue_scraper, search_qty, slug_name):
+    folder_path = os.path.join(HOME, "data", slug_name)
+    overview_path = os.path.join(folder_path, 'overview')
+    if not os.path.exists(overview_path):
+        os.makedirs(overview_path)
+    file_path = os.path.join(overview_path, slug_name+".json")
+    if continue_scraper and check_suggestion_exists(file_path):
+        return
+    additional_params = ''
+    web_button_link, suggestions = google_search(row, search_qty, additional_params)
+    validated_urls = get_validated_urls(web_button_link, suggestions)
+
+    str_row = row.to_json()
+    row_json = ast.literal_eval(str_row)
+
+    for valid_url in validated_urls:
+        subpages_list = get_subpages(valid_url.get('url'))
+        valid_url['subpages'] = list(set(subpages_list))
+    
+    row_json['suggestions'] = validated_urls
+    row_json['_id'] = index
+    with open(file_path, 'w', encoding='utf-8') as fn:
+        json.dump(row_json, fn, indent=4, ensure_ascii=False)
+
+    for sub_urls in row_json['suggestions']:
+    
+        for sub in sub_urls.get('subpages'):
+            print('sub', sub)
+            try:
+                resp = requests.get(sub, verify=False)
+            except Exception as e:
+                print('error', e)
+                continue
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            thisdata = {
+                "url": sub,
+                "text": soup.text.rstrip().replace("\n", "")
+            }
+            parsed = urlparse(sub)
+            slug_domain = parsed.netloc
+            subpath = os.path.join(folder_path, 'subpages', slug_domain)
+            if not os.path.exists(subpath):
+                os.makedirs(subpath)
+            filename = f"{parsed.path}-{parsed.params}-{parsed.query}-{parsed.fragment}"
+            slug_filename = slugify(filename)
+            if not slug_filename:
+                slug_filename = 'homepage'
+            filepath = os.path.join(subpath, slug_filename + ".json")
+            with open(filepath, 'w', encoding='utf-8') as fn:
+                json.dump(thisdata, fn, indent=4, ensure_ascii=False)
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--search-qty', required=True)
-    # parser.add_argument('--start-over', nargs='?', const=1, type=bool)
-    parser.add_argument('--start-index', nargs='?', const=1, type=int, default=0)
     parser.add_argument('--end-index', nargs='?', const=1, type=int, default=0)
     parser.add_argument('--continue-scraper', nargs='?', const=True, type=bool, default=False)
     args = parser.parse_args()
 
     search_qty = args.search_qty
-    start_index = args.start_index
     end_index = args.end_index
     continue_scraper = args.continue_scraper
-    print("search_qty", search_qty)
-    print("start_index", start_index)
-    print("end_index", end_index)
-    print('continue_scraper', continue_scraper)
     df = read_data(DATA_PATH)
     if end_index == 0:
         end_index = len(df)
     errors = []
+    print("search_qty", search_qty)
+    print('continue_scraper', continue_scraper)
+    print("end_index", end_index)
     for index, row in df.iterrows():
-        if index >= start_index and  index <= end_index:
-            slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}"
+        if index >= 0 and  index <= end_index:
+            print('index', index)
             try:
-                folder_path = os.path.join(HOME, "data", slug_name)
-                overview_path = os.path.join(folder_path, 'overview')
-                if not os.path.exists(overview_path):
-                    os.makedirs(overview_path)
-                file_path = os.path.join(overview_path, slug_name+".json")
-                if continue_scraper and check_validated_urls(file_path):
-                    continue
-                additional_params = ''
-                web_button_link, suggestions = google_search(row, search_qty, additional_params)
-                validated_urls = get_validated_urls(web_button_link, suggestions)
-                # if not validated_urls:
-                #     additional_params = 'address'
-                #     web_button_link, suggestions = google_search(row, search_qty, additional_params)
-                #     validated_urls = get_validated_urls(web_button_link, suggestions)
-
-                str_row = row.to_json()
-                row_json = ast.literal_eval(str_row)
-
-                for valid_url in validated_urls:
-                    subpages_list = get_subpages(valid_url.get('url'))
-                    valid_url['subpages'] = list(set(subpages_list))
-                
-                row_json['suggestions'] = validated_urls
-                row_json['_id'] = index
-                with open(file_path, 'w', encoding='utf-8') as fn:
-                    json.dump(row_json, fn, indent=4, ensure_ascii=False)
-
-                for sub_urls in row_json['suggestions']:
-                
-                    for sub in sub_urls.get('subpages'):
-                        print('sub', sub)
-                        try:
-                            resp = requests.get(sub, verify=False)
-                        except Exception as e:
-                            print('error', e)
-                            continue
-                        soup = BeautifulSoup(resp.content, 'html.parser')
-                        thisdata = {
-                            "url": sub,
-                            "text": soup.text.rstrip().replace("\n", "")
-                        }
-                        parsed = urlparse(sub)
-                        slug_domain = parsed.netloc
-                        subpath = os.path.join(folder_path, 'subpages', slug_domain)
-                        if not os.path.exists(subpath):
-                            os.makedirs(subpath)
-                        filename = f"{parsed.path}-{parsed.params}-{parsed.query}-{parsed.fragment}"
-                        slug_filename = slugify(filename)
-                        if not slug_filename:
-                            slug_filename = 'homepage'
-                        filepath = os.path.join(subpath, slug_filename + ".json")
-                        with open(filepath, 'w', encoding='utf-8') as fn:
-                            json.dump(thisdata, fn, indent=4, ensure_ascii=False)
+                slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}"
+                run_scraper(row, continue_scraper, search_qty, slug_name)
             except Exception:
                 tb = traceback.format_exc()
                 errors.append(slug_name + " " + tb)
                 folder_path = os.path.join(HOME, "log")
-                errors_path = os.path.join(folder_path, 'errors.json')
+                errors_path = os.path.join(folder_path, 'errors.txt')
                 with open(errors_path, 'w', encoding='utf-8') as fn:
                     json.dump(errors, fn, indent=4, ensure_ascii=False)
                 continue
