@@ -1,4 +1,3 @@
-from difflib import get_close_matches
 from bs4 import BeautifulSoup
 import pandas as pd
 from selenium import webdriver
@@ -12,7 +11,6 @@ from slugify import slugify
 from urllib.parse import urlparse, urljoin
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from Url import Url
 import traceback
 import re
 
@@ -22,10 +20,6 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 HOME = os.getcwd()
 DATA_PATH = "./source/client_list.csv"
-
-
-def closeMatches(word, patterns):
-    print(get_close_matches(word, patterns))
 
 
 def validate_homepage(link, row):
