@@ -113,7 +113,7 @@ def check_suggestion_exists(file_path):
     return False
 
 
-def get_link_of_subpages(homepage_url):
+def get_links_from_subpages(home_url, content):
     """
         Get sub page links from website content
         Args:
@@ -121,22 +121,28 @@ def get_link_of_subpages(homepage_url):
         Return:
             - list of subpage urls
     """
-    print('homepage_url', homepage_url)
-    response = requests.get(homepage_url, verify=False)
+    extensions = ('.pdf', '.jpg', '.png', '.mp4', '.wmv', '.gif', '.jpeg')
+    registrations = ('login', 'register', 'account', 'password')
+    external_links = ('mailto:', 'tel:', 'javascript:')
     urls = []
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.content, 'html.parser')
-        a_tags = soup.find_all('a', href=True)
-        links = [i.get('href') for i in a_tags]
-        links = sorted(list(set(links)))
-        links = [i for i in links if i.startswith('http') or i.startswith('/')]
-        homepage_domain = urlparse(homepage_url).netloc
-        for link in links:
-            a_href = urljoin(homepage_url, link)
-            domain = urlparse(a_href).netloc
-            if domain == homepage_domain:
-                urls.append(a_href)
-    urls = sorted(list(set(urls)))
+    soup = BeautifulSoup(content, 'html.parser')
+    a_tags = soup.find_all('a', href=True)
+    links = [i.get('href') for i in a_tags]
+    links = sorted(list(set(links)))
+    links = [i for i in links if not i.endswith(extensions)]
+    links = [i for i in links if not i.endswith(external_links)]
+    links = [i for i in links if not i.startswith('#')]
+    links = [i for i in links if all(ext not in i for ext in extensions)] # handle url like: https://www.achillesapotheke.de/s/cc_images/cache_2414881223.jpg?t=1302626702
+    links = [i for i in links if all(reg not in i for reg in registrations)]
+    homepage_domain = urlparse(home_url).netloc
+    for link in links:
+        a_href = urljoin(home_url, link)
+        domain = urlparse(a_href).netloc
+        if domain == homepage_domain:
+            urls.append(a_href)
+
+    deduplicated = check_duplicate_urls(urls, urls)
+    urls = sorted(list(set(deduplicated)))
     return urls
 
 
@@ -161,19 +167,7 @@ def write_output_to_json(path, data):
         json.dump(data, fn, indent=4, ensure_ascii=False)
 
 
-def remove_external_links(links):
-    """
-        Remove external links.
-        Args:
-            - links (list): list of subpages link
-        Return:
-            - only internal links
-    """
-    for link in links:
-        urlparsed = urlparse(link)
-
-
-def get_text_content_of_page(sub_url):
+def get_text_content_of_page(content):
     """
         Read content of url
         Args:
@@ -181,10 +175,7 @@ def get_text_content_of_page(sub_url):
         Return:
             dict of url and text of website
     """
-    print('sub_url', sub_url)
-    resp = requests.get(sub_url, verify=False)
-
-    soup = BeautifulSoup(resp.content, 'html.parser')
+    soup = BeautifulSoup(content, 'html.parser')
     body_raw = soup.get_text()
 
     # format the text
@@ -192,11 +183,7 @@ def get_text_content_of_page(sub_url):
     body_raw = re.compile(r"\t").sub(" ", body_raw)
     body_raw = re.compile(r"\r").sub(" ", body_raw)
     body_raw = re.sub(' +', ' ', body_raw) # remove multiple spaces
-    body_text = body_raw.strip()
-    return {
-        "url": sub_url,
-        "text": body_text
-    }
+    return body_raw.strip()
 
 
 def create_file_path_for_subpage(sub_url, pharmacy_folder, index):
@@ -222,6 +209,70 @@ def create_file_path_for_subpage(sub_url, pharmacy_folder, index):
     return os.path.join(subpath, slug_subpage_filename + ".json")
 
 
+def check_duplicate_urls(more_links, subpages_links):
+    links = []
+    for link in more_links:
+        if "#" in link:
+            parsed = urlparse(link)
+            newurl = parsed.scheme +"://"+ parsed.netloc + parsed.path
+            if newurl not in links and newurl not in subpages_links:
+                links.append(newurl)
+        else:
+            links.append(link)
+    return links
+
+
+def read_json(path):
+    with open(path, 'r', encoding='utf-8') as fn:
+        data = json.load(fn)
+    return data
+
+
+def recursive_function(links=[], pharmacy_folder='', home_url='', start_from=1, is_continue=False):
+    folder_name = os.path.basename(pharmacy_folder)
+    overview_path = os.path.join(pharmacy_folder, 'overview', folder_name + ".json")
+    pharmacy_data = read_json(overview_path)
+    get_data = [i for i in pharmacy_data.get('suggestions') if i.get('url') == home_url]
+    subpages_links = [i.get('url') for i in get_data[0].get('subpages')]
+    for index, sub_url in enumerate(links, start=start_from):
+        if is_continue and sub_url.get('is_scraped'):
+            continue
+        sub_link = sub_url.get('url')
+        print('sub_link', sub_link)
+        response = requests.get(sub_link, verify=False)
+        if response.status_code == 200:
+            body_text = get_text_content_of_page(response.content)
+            filepath = create_file_path_for_subpage(sub_link, pharmacy_folder, index)
+            subpage_dict = {
+                "url": sub_link,
+                "text": body_text
+            }
+            write_output_to_json(filepath, subpage_dict)
+
+            get_sub_data = [i for i in get_data[0].get('subpages') if i.get('url') == sub_link]
+            get_sub_data[0]['is_scraped'] = True
+            write_output_to_json(overview_path, pharmacy_data)
+
+            subpage_links = get_links_from_subpages(sub_link, response.content)
+            more_links = [i for i in subpage_links if i not in subpages_links]
+            new_links = check_duplicate_urls(more_links, subpages_links)
+            print('new_links', len(new_links))
+            if len(new_links) > 1:
+                print('initial', len(get_data[0]['subpages']))
+                newlink_list = []
+                for newlink in new_links:
+                    data_url = {
+                        'url': newlink,
+                        'is_scraped': False
+                    }
+                    get_data[0]['subpages'].append(data_url)
+                    newlink_list.append(data_url)
+                print('updated', len(get_data[0]['subpages']))
+                write_output_to_json(overview_path, pharmacy_data)
+                start_from = len(subpages_links) + 1
+                recursive_function(links=newlink_list, pharmacy_folder=pharmacy_folder, home_url=home_url, start_from=start_from, is_continue=is_continue)
+
+
 def run_scraper(row, continue_scraper, search_qty, slug_name, df_index):
     """
         Run Web Scraper
@@ -241,8 +292,8 @@ def run_scraper(row, continue_scraper, search_qty, slug_name, df_index):
     file_path = os.path.join(overview_path, slug_name+".json")
 
     # 3. Continue scraper to another pharmacy if data already scraped
-    if continue_scraper and check_suggestion_exists(file_path):
-        return
+    # if continue_scraper and check_suggestion_exists(file_path):
+    #     return
 
     # 4. Run google search
     validated_urls = []
@@ -250,7 +301,8 @@ def run_scraper(row, continue_scraper, search_qty, slug_name, df_index):
     if web_button_link: # Web button link considered as the desired home page url
         valid_url = {
             "url": web_button_link,
-            "score": 100
+            "score": 100,
+            "subpages": []
         }
         validated_urls.append(valid_url)
 
@@ -263,29 +315,45 @@ def run_scraper(row, continue_scraper, search_qty, slug_name, df_index):
             if is_valid:
                 valid_url = {
                     "url": suggestion_link,
-                    "score": ratio
+                    "score": ratio,
+                    "subpages": []
                 }
                 validated_urls.append(valid_url)
 
     # 6. Check for subpages for every suggestions
     for valid_url in validated_urls:
-        valid_url['subpages'] = get_link_of_subpages(valid_url.get('url'))
+        home_url = valid_url.get('url')
+        response = requests.get(home_url, verify=False)
+        if response.status_code == 200:
+            valid_url['subpages'] = []
+            internal_urls = get_links_from_subpages(home_url, response.content)
+            for url in internal_urls:
+                data_url = {
+                    'url': url,
+                    'is_scraped': False
+                }
+                valid_url['subpages'].append(data_url)
+
 
     # 7. Prepare dictionary for overview output    
-    str_row = row.to_json()
-    row_json = ast.literal_eval(str_row)
-    row_json['suggestions'] = validated_urls
-    row_json['_id'] = df_index
 
     # 8. Write data to json file output
-    write_output_to_json(file_path, row_json)
+    if continue_scraper and check_suggestion_exists(file_path):
+        pharmacy_data = read_json(file_path)
+        suggestion_links = pharmacy_data.get('suggestions')
+    else:
+        str_row = row.to_json()
+        row_json = ast.literal_eval(str_row)
+        row_json['suggestions'] = validated_urls
+        row_json['_id'] = df_index
+        write_output_to_json(file_path, row_json)
+        suggestion_links = validated_urls
 
     # 9. Get subpages contents
-    for sub_urls in row_json.get('suggestions'):
-        for index, sub_url in enumerate(sub_urls.get('subpages'), start=1):
-            subpage_dict = get_text_content_of_page(sub_url)
-            filepath = create_file_path_for_subpage(sub_url, pharmacy_folder, index)
-            write_output_to_json(filepath, subpage_dict)
+    for sub_urls in suggestion_links:
+        home_url = sub_urls.get('url')
+        links = sub_urls.get('subpages')
+        recursive_function(links=links, pharmacy_folder=pharmacy_folder, home_url=home_url, start_from=1, is_continue=continue_scraper)
 
 
 if __name__ == '__main__':
@@ -312,7 +380,7 @@ if __name__ == '__main__':
 
     errors = []
     for index, row in df.iterrows():
-        if index <= end_index:
+        if index > 13 and index <= end_index:
             print('index', index)
             slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}"
             try:
@@ -325,5 +393,4 @@ if __name__ == '__main__':
                 with open(errors_path, "a") as myfile:
                     myfile.write(error_string)
                 print('e', e)
-                import pdb; pdb.set_trace()
                 continue
