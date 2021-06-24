@@ -380,7 +380,7 @@ if __name__ == '__main__':
 
     errors = []
     for index, row in df.iterrows():
-        if index > 13 and index <= end_index:
+        if index <= end_index:
             print('index', index)
             slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}"
             try:
