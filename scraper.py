@@ -355,15 +355,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--search-qty', required=True)
     parser.add_argument('--end-index', nargs='?', const=1, type=int, default=0)
-    parser.add_argument('--continue-scraper', nargs='?', const=True, type=bool, default=False)
+    parser.add_argument('--continue-scraper', action='store_true')
+    parser.add_argument('--max-pages', type=int)
     args = parser.parse_args()
 
     search_qty = args.search_qty
     end_index = args.end_index
     continue_scraper = args.continue_scraper
+    max_pages = args.max_pages
     print("search_qty", search_qty)
     print('continue_scraper', continue_scraper)
     print("end_index", end_index)
+    print("max_pages", max_pages)
 
     # read data from CSV file
     df = read_data(DATA_PATH)
@@ -374,7 +377,7 @@ if __name__ == '__main__':
 
     errors = []
     for index, row in df.iterrows():
-        if index <= end_index:
+        if index >= 0 and index <= end_index:
             print('index', index)
             slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}"
             try:
