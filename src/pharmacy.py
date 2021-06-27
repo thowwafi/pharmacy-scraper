@@ -33,27 +33,45 @@ class Pharmacy:
         self.overview_file = self.get_overview_file()
 
     def get_slug_name(self):
+        """
+        create slug name for file naming purpose
+        """
         return f"{slugify(self.name)}-{slugify(self.city)}" # create slug for pharmacy identifier
 
     def get_folder_path(self):
+        """
+        Create folder path for each pharmacy
+        """
         path = os.path.join(HOME, "output", self.slug_name)
         makeDirIfNotExists(path)
         return path
 
     def get_overview_path(self):
+        """
+        Create overview folder to store overview file
+        """
         path = os.path.join(self.folder_path, "overview")
         makeDirIfNotExists(path)
         return path
 
     def get_subpages_path(self):
+        """
+        Create subpages folder to store all subpages content
+        """
         subpage = os.path.join(self.folder_path, "subpages")
         makeDirIfNotExists(subpage)
         return subpage
 
     def get_overview_file(self):
+        """
+        Create overview file to store summary of pharmacy data
+        """
         return os.path.join(self.overview_path, self.slug_name + ".json")
 
     def create_dict(self):
+        """
+        default dictionary for each pharmacy
+        """
         return {
             "_id": self._id,
             "name": self.name,
@@ -64,6 +82,9 @@ class Pharmacy:
         }
 
     def create_pharmacy_data(self, **kwargs):
+        """
+        save pharmacy data as a json file
+        """
         suggestions = kwargs.get('suggestions', [])
 
         data = self.create_dict()
@@ -76,6 +97,9 @@ class Pharmacy:
         return data
 
     def prepare_subpage_folder(self, home_url):
+        """
+        create subpage folder based on how many suggestions received from google search results
+        """
         domain = urlparse(home_url).netloc
         slug_domain = slugify(domain)
         self.domain_path = os.path.join(self.subpages_path, slug_domain)
@@ -83,14 +107,23 @@ class Pharmacy:
         return self.domain_path
 
     def read_pharmacy_data(self):
+        """
+        read pharmacy data from json file 
+        """
         with open(self.overview_file, 'r', encoding='utf-8') as fn:
             data = json.load(fn)
         return data
 
     def is_json_exists(self):
+        """
+        check if pharmacy data already exists
+        """
         return bool(os.path.exists(self.overview_file))
 
     def create_url_list_file(self, home_url):
+        """
+        create 0-url-list.json file to store all sub urls inside each home page url
+        """
         self.prepare_subpage_folder(home_url)
         url_list_path = os.path.join(self.domain_path, '0-url-list.json') # create json file to store all urls
         if not os.path.exists(url_list_path):
@@ -103,6 +136,9 @@ class Pharmacy:
         return url_list_path
 
     def prepare_file_path_for_subpage(self, subpage_url):
+        """
+        create name for each sub page based on domain, params, query, and fragment of url.
+        """
         parsed = urlparse(subpage_url)
         slug_domain = slugify(parsed.netloc)
         self.subpath = os.path.join(self.folder_path, 'subpages', slug_domain)
