@@ -126,67 +126,60 @@ def read_data(path):
     return pd.read_csv(path, sep=";", encoding='cp1252')
 
 
-def check_suggestion_exists(file_path):
+def get_all_subpages(url, pharmacy, home_url, max_pages, continue_scraper):
     """
-        Check if the current pharmacy already got suggestion links
+        Get all subpages recursively
         Args:
-            - file_path (str): path to the json file
-        Return:
-            - True or False
+            - url (str): url page that need to be scraped
+            - pharmacy (obj): pharmacy data object
+            - home_url (str): home page url for foldering purpose
+            - max_pages (int): maximum pages to be scraped
+            - continue_scraper (bool): continue the scraper or start over
     """
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as fn:
-            data = json.load(fn)
-        return bool(data.get('suggestions'))
-    return False
-
-
-def get_all_links(url, pharmacy, home_url):
-    urls = get_links_from_subpages(url)
-    write_to_file(urls, pharmacy, home_url)
+    urls = get_links_from_subpages(url) # get all links in current page
+    write_to_file(urls, pharmacy, home_url, max_pages, continue_scraper) # store to json file url list
     for link in urls:
-        print('link', link)
-        if os.path.exists(slugify(link) + '.json'):
+        filepath = pharmacy.prepare_file_path_for_subpage(link) # create filename json by slugify from url string
+        if os.path.exists(filepath): # handle infinite loop
+            print('link', link)
             break
-        get_all_links(link, pharmacy, home_url)
+        get_all_subpages(link, pharmacy, home_url, max_pages, continue_scraper)
 
 
-def write_to_file(links, pharmacy, home_url):
-    domain = urlparse(home_url).netloc
-    slug_domain = slugify(domain)
-    domain_path = os.path.join(pharmacy.subpages_path, slug_domain)
-    makeDirIfNotExists(domain_path)
-    url_list_path = os.path.join(domain_path, '0-url-list.json')
-
-    if not os.path.exists(url_list_path):
-        initial = {
-            "home_url": home_url,
-            "sublinks": []
-        }
-        with open(url_list_path, 'w', encoding='utf-8') as fn:
-            json.dump(initial, fn, indent=4, ensure_ascii=False)
+def write_to_file(links, pharmacy, home_url, max_pages, continue_scraper):
+    """
+        Save text content as a json
+        Args:
+            - links (list): list of url in current page
+            - pharmacy (obj): pharmacy data object
+            - home_url (str): home page url for foldering purpose
+            - max_pages (int): maximum pages to be scraped
+            - continue_scraper (bool): continue the scraper or start over
+    """
+    url_list_path = pharmacy.create_url_list_file(home_url)
 
     with open(url_list_path, 'r') as f:
         data_urls = json.load(f)
-    sublinks = data_urls.get("sublinks")
-    count = 0
-    import pdb; pdb.set_trace()
-    for link in links:
-        if link not in sublinks and len(os.listdir(domain_path)) < 6:
-            filepath = pharmacy.prepare_file_path_for_subpage(link, count)
-            if not os.path.exists(filepath):
-                response = requests.get(link, verify=False)
-                body_text = get_text_content_of_page(response.content)
-                data_url = {
-                    "url": link,
-                    "text": body_text
-                }
-                with open(filepath, 'w', encoding='utf-8') as fn:
-                    json.dump(data_url, fn, indent=4, ensure_ascii=False)
-            sublinks.append(link)
 
-    with open(url_list_path, 'w', encoding='utf-8') as fn:
-        json.dump(data_urls, fn, indent=4, ensure_ascii=False)
+    sublinks = data_urls.get("sublinks")
+    for link in links:
+
+        if link not in sublinks and len(os.listdir(pharmacy.domain_path)) <= max_pages:
+            filepath = pharmacy.prepare_file_path_for_subpage(link)
+            if continue_scraper and os.path.exists(filepath):
+                continue
+            print('link', link)
+            response = requests.get(link, verify=False)
+            body_text = get_text_content_of_page(response.content)
+            data_url = {
+                "url": link,
+                "text": body_text
+            }
+            with open(filepath, 'w', encoding='utf-8') as fn:
+                json.dump(data_url, fn, indent=4, ensure_ascii=False)
+            sublinks.append(link)
+            with open(url_list_path, 'w', encoding='utf-8') as fn:
+                json.dump(data_urls, fn, indent=4, ensure_ascii=False)
 
 
 def get_links_from_subpages(home_url):
@@ -223,17 +216,6 @@ def get_links_from_subpages(home_url):
     return urls
 
 
-def write_output_to_json(path, data):
-    """
-        Write data to json file
-        Args:
-            - path (str): location of the file
-            - data (list/dict): data
-    """
-    with open(path, 'w', encoding='utf-8') as fn:
-        json.dump(data, fn, indent=4, ensure_ascii=False)
-
-
 def get_text_content_of_page(content):
     """
         Read content of url
@@ -251,29 +233,6 @@ def get_text_content_of_page(content):
     body_raw = re.compile(r"\r").sub(" ", body_raw)
     body_raw = re.sub(' +', ' ', body_raw) # remove multiple spaces
     return body_raw.strip()
-
-
-def create_file_path_for_subpage(sub_url, pharmacy_folder, index):
-    """
-        Prepare file path for subpages
-        Args:
-            - suburl (str): address of subpages url
-            - pharmacy_folder (str): parent folder of subpages
-            - index (int): number of iteration of subpages
-        Return:
-            - json file path
-    """
-    parsed = urlparse(sub_url)
-    slug_domain = slugify(parsed.netloc)
-    subpath = os.path.join(pharmacy_folder, 'subpages', slug_domain)
-    makeDirIfNotExists(subpath)
-    filename = f"{parsed.path}-{parsed.params}-{parsed.query}-{parsed.fragment}"
-    if len(filename) > 100: # handle OS error filename too long
-        filename = filename[:100]
-    slug_subpage_filename = slugify(filename)
-    if parsed.path == "/": # handle root of homepage
-        slug_subpage_filename = '1-home'
-    return os.path.join(subpath, slug_subpage_filename + ".json")
 
 
 def check_multiple_fragments_in_page(more_links, subpages_links):
@@ -296,89 +255,6 @@ def check_multiple_fragments_in_page(more_links, subpages_links):
     return links
 
 
-def read_json(path):
-    with open(path, 'r', encoding='utf-8') as fn:
-        data = json.load(fn)
-    return data
-
-
-def get_subpages_recursively(subpages, pharmacy, home_url, start_from, is_continue, max_pages):
-    """
-        Recursive funtion to get new sub pages in every subpage.
-
-        Args:
-            - links (list): list of subpages link in current homepage
-            - pharmacy_folder (str): location of output pharmacy folder
-            - home_url (str): domain of the current page scraped
-            - start_from (int): index of looping to embed in the filename
-            - is_continue (bool): additional argument of the scraper to continue or start over from beginning
-            - max_pages: additional argument of the scraper to limit maximum subpages
-    
-    """
-    pharmacy_data = pharmacy.read_pharmacy_data()
-    get_data = [i for i in pharmacy_data.get('suggestions') if i.get('url') == home_url]
-    stored_links = get_data[0].get('subpages')
-    print('len(stored_links)', len(stored_links))
-    count = start_from
-    count_max = 0
-    if start_from == 1:
-        count_max = len(subpages)
-
-    for subpage_url in subpages:
-        print('len(subpages)', len(subpages))
-        filepath = pharmacy.prepare_file_path_for_subpage(subpage_url, count)
-        count_subpage_files = len(os.listdir(pharmacy.subpath))
-        print('count_subpage_files', count_subpage_files)
-        if os.path.exists(filepath):
-            count += 1
-            print('continue', 'continue')
-            continue
-        print('sub_link', subpage_url)
-        response = requests.get(subpage_url, verify=False)
-        if response.status_code == 200:
-            body_text = get_text_content_of_page(response.content)
-            subpage_dict = {
-                "url": subpage_url,
-                "text": body_text
-            }
-            pharmacy.save_subpage_content(filepath, subpage_dict)
-            # import pdb; pdb.set_trace()
-
-            # update subpage data is_scraped to True
-            # get_sub_data = [i for i in get_data[0].get('subpages') if i.get('url') == subpage_url]
-            # get_sub_data[0]['is_scraped'] = True
-            # count_true = [i for i in get_data[0].get('subpages') if i.get('is_scraped') is True]
-            # print('len(count_true)', len(count_true))
-            # pharmacy.update_pharmacy_data(pharmacy_data)
-
-            # check new links
-            subpage_links = get_links_from_subpages(subpage_url, response.content)
-            more_links = [i for i in subpage_links if i not in subpages]
-            new_links = check_multiple_fragments_in_page(more_links, subpages)
-            print('new_links', len(new_links))
-            count += 1
-            print('max_pages', max_pages)
-            if count_max > max_pages:
-                break
-            if len(new_links) > 1:
-                # for newlink in new_links:
-                #     subpages.append(newlink)
-                #     get_data[0]['subpages'].append(newlink)
-            #         # data_url = {
-            #         #     'url': newlink,
-            #         #     'is_scraped': False
-            #         # }
-            #         # get_data[0]['subpages'].append(data_url)
-            #         # newlink_list.append(data_url)
-            #     print('count', count)
-                # pharmacy.update_pharmacy_data(pharmacy_data)
-
-                get_subpages_recursively(subpages=new_links, pharmacy=pharmacy, home_url=home_url,
-                                         start_from=count, is_continue=is_continue, max_pages=max_pages)
-    return subpages
-
-
-# def run_scraper(row={}, continue_scraper=False, search_qty=2, slug_name="", df_index=0, max_pages=100):
 def run_scraper(pharmacy, params):
     """
         Run Web Scraper
@@ -389,14 +265,6 @@ def run_scraper(pharmacy, params):
             - slug_name (str): name of pharmacy identifier
             - df_index (int): dataframe index
     """
-    # Initialize folder for output data
-    # pharmacy_folder = os.path.join(HOME, "data", slug_name)
-    # overview_path = os.path.join(pharmacy_folder, 'overview')
-    # makeDirIfNotExists(overview_path)
-
-    # Initialize file name for output data
-    # file_path = os.path.join(overview_path, slug_name+".json")
-
     # Run google search
     search_qty = params.search_qty
     validated_urls = []
@@ -421,43 +289,28 @@ def run_scraper(pharmacy, params):
                 }
                 validated_urls.append(valid_url)
 
-    # Check for subpages for every suggestions
-    # for valid_url in validated_urls[1:]:
-    #     home_url = valid_url.get('url')
-        # internal_urls = get_links_from_subpages(home_url, response.content)
-        # response = requests.get(home_url, verify=False)
-        # if response.status_code == 200:
-        #     valid_url['subpages'] = []
-        #     for url in internal_urls:
-        #         valid_url['subpages'].append(url)
-
-
-    if continue_scraper and pharmacy.is_suggestions_exist:
-        # if continue_scraper is True and suggestion links already exists
-        # read data from existing file
-        suggestion_list = pharmacy.get_suggestions()
+    if continue_scraper and pharmacy.is_json_exists():
+        # if continuing scraper and data already exist
+        # check if suggestions already exists
+        # if not create new data from google search results
+        pharmacy_data = pharmacy.read_pharmacy_data()
+        if not pharmacy_data.get('suggestions'):
+            pharmacy_data = pharmacy.create_pharmacy_data(suggestions=validated_urls)
     else:
-        # use data from google search result
-        pharmacy.create_pharmacy_data(suggestions=validated_urls)
-        suggestion_list = validated_urls
+        pharmacy_data = pharmacy.create_pharmacy_data(suggestions=validated_urls)
+    suggestion_list = pharmacy_data.get('suggestions')
 
     # Get subpages contents recursively
     for suggestion in suggestion_list:
         home_url = suggestion.get('url')
-        get_all_links(url=home_url, pharmacy=pharmacy, home_url=home_url)
-        import pdb; pdb.set_trace()
-        # subpages = suggestion.get('subpages')
-        # subpages_new = get_subpages_recursively(subpages=subpages, pharmacy=pharmacy, home_url=home_url,
-        #                          start_from=1, is_continue=continue_scraper, max_pages=max_pages)
-        import pdb; pdb.set_trace()
-        # get_subpages_recursively(links=links, pharmacy_folder=pharmacy_folder, home_url=home_url,
-        #                          start_from=1, is_continue=continue_scraper, max_pages=max_pages)
+        pharmacy.prepare_subpage_folder(home_url)
+        get_all_subpages(url=home_url, pharmacy=pharmacy, home_url=home_url, max_pages=max_pages, continue_scraper=continue_scraper) # run recursive function
 
 
 if __name__ == '__main__':
     # initialize argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument('--search-qty', required=True)
+    parser.add_argument('--search-qty', required=True, type=int)
     parser.add_argument('--end-index', nargs='?', const=1, type=int, default=0)
     parser.add_argument('--start-index', nargs='?', const=1, type=int, default=0)
     parser.add_argument('--continue-scraper', action='store_true')
@@ -494,12 +347,10 @@ if __name__ == '__main__':
             street = row['street']
             zip_code = row['zip']
             city = row['city']
-            pharmacy = Pharmacy(name=name, street=street, zip_code=zip_code, city=city, _id=index)
-            # slug_name = f"{slugify(row['name'])}-{slugify(row['city'])}" # create slug for pharmacy identifier
+            pharmacy = Pharmacy(name=name, street=street, zip_code=zip_code, city=city, _id=index) # create pharmacy object
             try:
                 # run scraper by each pharmacy
                 run_scraper(pharmacy=pharmacy, params=args)
-                # run_scraper(row=row, continue_scraper=continue_scraper, search_qty=search_qty, slug_name=slug_name, df_index=index, max_pages=max_pages)
             except Exception as e: # catch any errors
                 error_string = datetime.now().isoformat()+" "+pharmacy.slug_name+" "+traceback.format_exc() # store error messages
                 write_errors(error_string)
