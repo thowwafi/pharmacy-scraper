@@ -126,62 +126,6 @@ def read_data(path):
     return pd.read_csv(path, sep=";", encoding='cp1252')
 
 
-def get_all_subpages(url, pharmacy, home_url, max_pages, continue_scraper):
-    """
-        Get all subpages recursively
-        Args:
-            - url (str): url page that need to be scraped
-            - pharmacy (obj): pharmacy data object
-            - home_url (str): home page url for foldering purpose
-            - max_pages (int): maximum pages to be scraped
-            - continue_scraper (bool): continue the scraper or start over
-    """
-    urls = get_links_from_subpages(url) # get all links in current page
-    write_to_file(urls, pharmacy, home_url, max_pages, continue_scraper) # store to json file url list
-    for link in urls:
-        filepath = pharmacy.prepare_file_path_for_subpage(link) # create filename json by slugify from url string
-        if os.path.exists(filepath): # handle infinite loop
-            print('link', link)
-            break
-        get_all_subpages(link, pharmacy, home_url, max_pages, continue_scraper)
-
-
-def write_to_file(links, pharmacy, home_url, max_pages, continue_scraper):
-    """
-        Save text content as a json
-        Args:
-            - links (list): list of url in current page
-            - pharmacy (obj): pharmacy data object
-            - home_url (str): home page url for foldering purpose
-            - max_pages (int): maximum pages to be scraped
-            - continue_scraper (bool): continue the scraper or start over
-    """
-    url_list_path = pharmacy.create_url_list_file(home_url)
-
-    with open(url_list_path, 'r') as f:
-        data_urls = json.load(f)
-
-    sublinks = data_urls.get("sublinks")
-    for link in links:
-
-        if link not in sublinks and len(os.listdir(pharmacy.domain_path)) <= max_pages:
-            filepath = pharmacy.prepare_file_path_for_subpage(link)
-            if continue_scraper and os.path.exists(filepath):
-                continue
-            print('link', link)
-            response = requests.get(link, verify=False)
-            body_text = get_text_content_of_page(response.content)
-            data_url = {
-                "url": link,
-                "text": body_text
-            }
-            with open(filepath, 'w', encoding='utf-8') as fn:
-                json.dump(data_url, fn, indent=4, ensure_ascii=False)
-            sublinks.append(link)
-            with open(url_list_path, 'w', encoding='utf-8') as fn:
-                json.dump(data_urls, fn, indent=4, ensure_ascii=False)
-
-
 def get_links_from_subpages(home_url):
     """
         Get sub page links from website content
@@ -254,6 +198,44 @@ def check_multiple_fragments_in_page(more_links, subpages_links):
             links.append(link)
     return links
 
+def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=1):
+    """
+        Get all links of the current page recursively and get text content.
+        Args:
+            - url (str): current url scraped
+            - pharmacy (obj): pharmacy data object
+            - max_pages (int): maximum pages to be scraped
+            - continue_scraper (bool): continue the scraper or start over
+            - links (list): list of url in all pages
+            - count (int): counting recursive level
+    """
+    url_list_path = pharmacy.create_url_list_file(url) # create file path for url list
+    with open(url_list_path, 'r') as f:
+        data_list_urls = json.load(f) # read url list data
+    data_list_urls['sublinks'] = links # update url list
+    with open(url_list_path, 'w', encoding='utf-8') as fn:
+        json.dump(data_list_urls, fn, indent=4, ensure_ascii=False) # write url list
+
+    urls = get_links_from_subpages(url) # get all unique url in current page
+    for link in urls:
+        if link not in links and count <= max_pages: # filter url not scraped and set max pages
+            print('count', count)
+            print('link', link)
+            filepath = pharmacy.prepare_file_path_for_subpage(link) # create file path for each url
+            if continue_scraper and os.path.exists(filepath): 
+                # continue to another url if file is exists
+                continue
+            response = requests.get(link, verify=False)
+            body_text = get_text_content_of_page(response.content) # get text content
+            data_url = {
+                "url": link,
+                "text": body_text
+            }
+            with open(filepath, 'w', encoding='utf-8') as fn:
+                json.dump(data_url, fn, indent=4, ensure_ascii=False)
+            links.append(link)
+            getLinks(link, pharmacy, max_pages, continue_scraper, links, count+1)
+
 
 def run_scraper(pharmacy, params):
     """
@@ -303,8 +285,8 @@ def run_scraper(pharmacy, params):
     # Get subpages contents recursively
     for suggestion in suggestion_list:
         home_url = suggestion.get('url')
-        pharmacy.prepare_subpage_folder(home_url)
-        get_all_subpages(url=home_url, pharmacy=pharmacy, home_url=home_url, max_pages=max_pages, continue_scraper=continue_scraper) # run recursive function
+        pharmacy.prepare_subpage_folder(home_url) # create folder to store result by domain
+        getLinks(home_url, pharmacy=pharmacy, max_pages=max_pages, continue_scraper=continue_scraper) # run recursive function
 
 
 if __name__ == '__main__':
