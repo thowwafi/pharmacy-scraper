@@ -3,7 +3,6 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 import json
-import ast
 import argparse
 from fuzzywuzzy import fuzz
 import os
