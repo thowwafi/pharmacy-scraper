@@ -197,7 +197,7 @@ def check_multiple_fragments_in_page(more_links, subpages_links):
             links.append(link)
     return links
 
-def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=1):
+def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=0):
     """
         Get all links of the current page recursively and get text content.
         Args:
@@ -211,6 +211,10 @@ def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=1):
     url_list_path = pharmacy.create_url_list_file(url) # create file path for url list
     with open(url_list_path, 'r') as f:
         data_list_urls = json.load(f) # read url list data
+    if continue_scraper and count == 0:
+        # if continue set links to existing data
+        links = data_list_urls['sublinks']
+        count = len(links)
     data_list_urls['sublinks'] = links # update url list
     with open(url_list_path, 'w', encoding='utf-8') as fn:
         json.dump(data_list_urls, fn, indent=4, ensure_ascii=False) # write url list
@@ -221,6 +225,7 @@ def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=1):
             print('count', count)
             print('link', link)
             filepath = pharmacy.prepare_file_path_for_subpage(link) # create file path for each url
+            links.append(link)
             if continue_scraper and os.path.exists(filepath): 
                 # continue to another url if file is exists
                 continue
@@ -232,8 +237,9 @@ def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=1):
             }
             with open(filepath, 'w', encoding='utf-8') as fn:
                 json.dump(data_url, fn, indent=4, ensure_ascii=False)
-            links.append(link)
             getLinks(link, pharmacy, max_pages, continue_scraper, links, count+1)
+    with open(url_list_path, 'w', encoding='utf-8') as fn:
+        json.dump(data_list_urls, fn, indent=4, ensure_ascii=False) # write url list
 
 
 def run_scraper(pharmacy, params):
