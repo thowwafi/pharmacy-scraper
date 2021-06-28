@@ -15,12 +15,14 @@ import re
 from pharmacy import Pharmacy, makeDirIfNotExists
 from datetime import datetime
 from difflib import get_close_matches
+import sys
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 SRC = os.getcwd()
 HOME = os.path.dirname(SRC)
 DATA_PATH = "../data/client_list.csv"
+CHROMEDRIVER_PATH = "../driver/linux/chromedriver"
 
 
 def write_errors(error_str):
@@ -79,7 +81,7 @@ def get_suggestions_from_google_search(pharmacy, search_qty):
     # initialize chrome webdriver for selenium bot
     options = ChromeOptions()
     options.add_argument("--headless")
-    driver = webdriver.Chrome(executable_path="../driver/chromedriver", options=options)
+    driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options)
 
     query = f"{pharmacy.name}+{pharmacy.street}+{pharmacy.zip_code}+{pharmacy.city}"
     query = query.replace("&", "and").replace(' ', '+') # handle space and character of query search
@@ -294,6 +296,15 @@ def run_scraper(pharmacy, params):
         getLinks(home_url, pharmacy=pharmacy, max_pages=max_pages, continue_scraper=continue_scraper) # run recursive function
 
 
+def check_chrome_driver():
+    try:
+        webdriver.Chrome(executable_path=CHROMEDRIVER_PATH)
+    except OSError:
+        sys.exit("Chrome webdriver not matching with OS")
+    except Exception as e:
+        sys.exit(str(e))
+
+
 if __name__ == '__main__':
     # initialize argument parser
     parser = argparse.ArgumentParser()
@@ -315,6 +326,8 @@ if __name__ == '__main__':
     print("start_index", start_index)
     print("end_index", end_index)
     print("max_pages", max_pages)
+
+    check_chrome_driver()
 
     # read data from CSV file
     df = read_data(DATA_PATH)

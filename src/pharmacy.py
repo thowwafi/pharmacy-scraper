@@ -42,17 +42,13 @@ class Pharmacy:
         """
         Create folder path for each pharmacy
         """
-        path = os.path.join(HOME, "output", self.slug_name)
-        makeDirIfNotExists(path)
-        return path
+        return os.path.join(HOME, "output", self.slug_name)
 
     def get_overview_path(self):
         """
         Create overview folder to store overview file
         """
-        path = os.path.join(self.folder_path, "overview")
-        makeDirIfNotExists(path)
-        return path
+        return os.path.join(self.folder_path, "overview")
 
     def get_subpages_path(self):
         """
