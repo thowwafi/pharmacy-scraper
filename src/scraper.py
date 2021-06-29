@@ -22,7 +22,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 SRC = os.getcwd()
 HOME = os.path.dirname(SRC)
 DATA_PATH = "../data/client_list.csv"
-CHROMEDRIVER_PATH = "../driver/linux/chromedriver"
+CHROMEDRIVER_PATH = "../driver/chromedriver"
 
 
 def write_errors(error_str):
@@ -224,13 +224,14 @@ def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=0):
     urls = get_links_from_subpages(url) # get all unique url in current page
     for link in urls:
         if link not in links and count <= max_pages: # filter url not scraped and set max pages
-            print('count', count)
-            print('link', link)
             filepath = pharmacy.prepare_file_path_for_subpage(link) # create file path for each url
             links.append(link)
             if continue_scraper and os.path.exists(filepath): 
                 # continue to another url if file is exists
+                count += 1
                 continue
+            print('count', count)
+            print('link', link)
             response = requests.get(link, verify=False)
             body_text = get_text_content_of_page(response.content) # get text content
             data_url = {
@@ -239,7 +240,8 @@ def getLinks(url, pharmacy, max_pages, continue_scraper, links=[], count=0):
             }
             with open(filepath, 'w', encoding='utf-8') as fn:
                 json.dump(data_url, fn, indent=4, ensure_ascii=False)
-            getLinks(link, pharmacy, max_pages, continue_scraper, links, count+1)
+            count += 1
+            getLinks(link, pharmacy, max_pages, continue_scraper, links, count)
     with open(url_list_path, 'w', encoding='utf-8') as fn:
         json.dump(data_list_urls, fn, indent=4, ensure_ascii=False) # write url list
 
@@ -298,7 +300,9 @@ def run_scraper(pharmacy, params):
 
 def check_chrome_driver():
     try:
-        webdriver.Chrome(executable_path=CHROMEDRIVER_PATH)
+        options = ChromeOptions()
+        options.add_argument("--headless")
+        webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options)
     except OSError:
         sys.exit("Chrome webdriver not matching with OS")
     except Exception as e:
