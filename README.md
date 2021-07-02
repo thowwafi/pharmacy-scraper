@@ -1,10 +1,9 @@
 # pharmacy-scraper
 
 ```
-git clone https://github.com/siegstedt/kreativkopf.git
 pip install -r requirements
 cd src
-python scraper.py --search-qty 2 --max-pages 100 --continue-scraper 
+python scraper.py --search-qty 2 --max-pages 100 --continue-scraper
 
 options
 --search-qty: how many google search suggestions need that to be scraped
