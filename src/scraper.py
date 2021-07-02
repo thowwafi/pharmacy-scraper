@@ -21,7 +21,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 SRC = os.getcwd()
 HOME = os.path.dirname(SRC)
-DATA_PATH = "../data/client_list.csv"
+DATA_PATH = "../data/client_list_filtered.csv"
 CHROMEDRIVER_PATH = "../driver/chromedriver"
 
 
